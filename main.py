@@ -12,6 +12,9 @@ import io
 import re
 from deep_translator import GoogleTranslator, MyMemoryTranslator, MicrosoftTranslator
 import time
+import subprocess
+import tempfile
+import os
 
 
 class DocumentTranslator:
@@ -48,6 +51,50 @@ class DocumentTranslator:
             "Microsoft Translator": "💼 Professional, good for business",
             "MyMemory": "📚 Community-driven, free alternative",
         }
+
+    def convert_doc_to_docx(self, doc_file) -> io.BytesIO:
+        """Convert .doc file to .docx format using LibreOffice"""
+        try:
+            # Create a temporary directory
+            with tempfile.TemporaryDirectory() as temp_dir:
+                # Save uploaded .doc file
+                doc_path = os.path.join(temp_dir, "input.doc")
+                with open(doc_path, "wb") as f:
+                    f.write(doc_file.read())
+
+                # Convert using LibreOffice (soffice command)
+                # This requires LibreOffice to be installed on the system
+                result = subprocess.run(
+                    [
+                        "soffice",
+                        "--headless",
+                        "--convert-to",
+                        "docx",
+                        "--outdir",
+                        temp_dir,
+                        doc_path,
+                    ],
+                    capture_output=True,
+                    timeout=30,
+                )
+
+                # Read the converted file
+                docx_path = os.path.join(temp_dir, "input.docx")
+                if os.path.exists(docx_path):
+                    with open(docx_path, "rb") as f:
+                        docx_bytes = io.BytesIO(f.read())
+                    return docx_bytes
+                else:
+                    raise Exception("Conversion failed - output file not created")
+
+        except FileNotFoundError:
+            raise Exception(
+                "LibreOffice not found. Please install LibreOffice to convert .doc files."
+            )
+        except subprocess.TimeoutExpired:
+            raise Exception("Conversion timed out. File may be too large or corrupted.")
+        except Exception as e:
+            raise Exception(f"Conversion error: {str(e)}")
 
     def extract_text_from_docx(self, file) -> str:
         """Extract text content from a Word document"""
@@ -309,8 +356,8 @@ def main():
     # File uploader
     uploaded_file = st.file_uploader(
         "Drag and drop a Word document here, or click to browse",
-        type=["docx"],
-        help="Upload a .docx file to translate",
+        type=["docx", "doc"],
+        help="Upload a .docx or .doc file to translate",
     )
 
     # Future feature: Text input (currently disabled)
@@ -328,13 +375,33 @@ def main():
 
     if uploaded_file is not None:
         try:
-            # Create unique identifier for the file
-            current_file_id = f"{uploaded_file.name}_{uploaded_file.size}"
-            text_to_translate = translator.extract_text_from_docx(uploaded_file)
-            st.session_state.current_text = text_to_translate
-            st.success(
-                f"✅ File loaded successfully! ({len(text_to_translate)} characters)"
-            )
+            # Check if file is .doc and convert to .docx
+            file_extension = uploaded_file.name.split(".")[-1].lower()
+
+            if file_extension == "doc":
+                st.info("🔄 Converting .doc file to .docx format...")
+                try:
+                    converted_file = translator.convert_doc_to_docx(uploaded_file)
+                    text_to_translate = translator.extract_text_from_docx(
+                        converted_file
+                    )
+                except Exception as conv_error:
+                    st.error(f"❌ Error converting .doc file: {conv_error}")
+                    st.info(
+                        "💡 Try saving your file as .docx format in Word and upload again."
+                    )
+                    text_to_translate = ""
+            else:
+                # Handle .docx files directly
+                text_to_translate = translator.extract_text_from_docx(uploaded_file)
+
+            if text_to_translate:
+                # Create unique identifier for the file
+                current_file_id = f"{uploaded_file.name}_{uploaded_file.size}"
+                st.session_state.current_text = text_to_translate
+                st.success(
+                    f"✅ File loaded successfully! ({len(text_to_translate)} characters)"
+                )
         except Exception as e:
             st.error(f"❌ Error reading file: {e}")
     # elif input_text:  # Uncomment when text input is re-enabled
@@ -418,7 +485,7 @@ def main():
         """
         <div style='text-align: center; color: #666; padding: 2rem;'>
             <p style='font-size: 1.1rem;'>
-                💡 <b>Tip:</b> Upload a .docx document and try different translators to find the best translation!
+                💡 <b>Tip:</b> Upload a .docx or .doc document and try different translators to find the best translation!
             </p>
             <p style='font-size: 1rem;'>
                 Powered by multiple translation services
