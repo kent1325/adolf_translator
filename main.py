@@ -15,8 +15,8 @@ import time
 
 
 class DocumentTranslator:
-    def __init__(self, max_chunk_size: int = 4500):
-        """Initialize the translator"""
+    def __init__(self, max_chunk_size: int = 1500):
+        """Initialize the translator with conservative chunk size"""
         self.max_chunk_size = max_chunk_size
         self.languages = {
             "Auto-detect": "auto",
@@ -144,13 +144,29 @@ class DocumentTranslator:
 
         for i, chunk in enumerate(chunks):
             status_text.text(f"Translating chunk {i+1} of {len(chunks)}...")
-            try:
-                translated = translator.translate(chunk)
-                translated_chunks.append(translated)
-                time.sleep(1)
-            except Exception as e:
-                st.error(f"Error translating chunk {i+1}: {e}")
-                translated_chunks.append(f"[Translation error]")
+            retry_count = 0
+            max_retries = 3
+
+            while retry_count < max_retries:
+                try:
+                    translated = translator.translate(chunk)
+                    translated_chunks.append(translated)
+                    time.sleep(1.5)  # Increased delay to avoid rate limits
+                    break
+                except Exception as e:
+                    retry_count += 1
+                    if retry_count < max_retries:
+                        status_text.text(
+                            f"Retrying chunk {i+1}... (attempt {retry_count + 1})"
+                        )
+                        time.sleep(3)  # Wait longer before retry
+                    else:
+                        st.warning(
+                            f"⚠️ Could not translate chunk {i+1} after {max_retries} attempts. Skipping..."
+                        )
+                        translated_chunks.append(
+                            f"[Translation unavailable for this section]"
+                        )
 
             progress_bar.progress((i + 1) / len(chunks))
 
@@ -345,6 +361,9 @@ def main():
                 source_code = translator.languages[source_lang]
                 target_code = translator.languages[target_lang]
 
+                # Show document stats
+                st.info(f"📊 Document size: {len(text_to_translate):,} characters")
+
                 st.session_state.translated_text = translator.translate_text(
                     text_to_translate, target_code, source_code, translator_type
                 )
@@ -352,6 +371,9 @@ def main():
                 st.rerun()  # Force UI update
             except Exception as e:
                 st.error(f"❌ Translation error: {e}")
+                st.info(
+                    "💡 Try selecting a different translator or splitting your document into smaller files."
+                )
                 st.session_state.translated_text = ""
 
     # Output section
