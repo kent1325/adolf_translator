@@ -1,0 +1,13 @@
+[project]
+name = "adolf-translator"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "deep-translator>=1.11.4",
+    "deepl>=1.23.0",
+    "pypdf2>=3.0.1",
+    "python-docx>=1.2.0",
+    "streamlit>=1.51.0",
+]
